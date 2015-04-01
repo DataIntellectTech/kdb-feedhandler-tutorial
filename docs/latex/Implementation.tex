@@ -1,0 +1,423 @@
+\chapter{Implementation}
+
+This section of the document will show you some of the important steps in implementing an actual
+feed handler. In order to simplify things, we will focus on the shared library version of the feed
+handler first and then show the minor modifications to get it running as a standalone executable
+where appropriate. For a complete example see the code that accompanies this document.
+
+\section{Initialization}
+
+\subsection{Connecting to a Q Process}
+
+The first step you should take in a standalone C program that will be creating and sending K objects
+is to initialise the kdb+ runtime. This occurs automatically whenever a call to any of the khp* functions
+are called. If you are not able to open the connection to the q process immediately, then you should still
+call khp as the very first step in your program but with a port of -1 e.g. khp("",-1). Any code that is
+running as a shared object should already have the run time initialized correctly by the q process.
+
+\begin{lstlisting}
+int conn = khp("localhost", 7010);
+if (conn <= 0) { fprintf(stderr, "connection failed!\\n"); exit(EXIT_FAILURE); }
+\end{lstlisting}
+
+Note that a shared library cannot use the khp function to open a connection to another q process and
+will not compile as these functions are missing from q.lib! If you want to share code between the shared
+library and the standalone executable, you will need to conditionally compile these parts of the code.
+
+The value returned from the khp call is an integer that represents the connection handle. This handle
+can now be used to send queries and K objects to a q process. To do this, we use the k function with
+the first argument set as the handle, the second argument is a string that should be valid q expression
+and the remaining arguments are K objects that should be passed as arguments to the q expression followed
+by a terminating NULL.
+
+\begin{lstlisting}
+k(conn, "a:42", (K) 0);
+\end{lstlisting}
+
+If the handle is negative; then the k() function will operate asynchronously. This simple use of the k() 
+function is how the feed handler will communicate with other processes. One thing to take note of is that
+all function calls in q take at least 1 argument! If you need to call a function that takes no arguments,
+you should just pass an integer or a null.
+
+\begin{lstlisting}
+k(conn, "function", ki(15), kf(3.142), (K) 0);
+\end{lstlisting}
+
+The standard kdb+ tick.q script has a .u.upd function expects two arguments. The first is a symbol that
+indicates the table that the data should be stored in. The second argument is the data itself which should
+be either a list that represents a single row, or a list of column vectors to represent a batch of updates.
+The time column in either case is optional and it can be appended automatically by the script (which is
+usually preferable in most setups).
+
+\begin{lstlisting}
+k(conn, ".u.upd", ks("trade"), knk(3, ks("IBM"), kf(363.242), kj(2424)));
+\end{lstlisting}
+
+If you are running as part of a shared library, you can still use the k function to send messages to the q
+process. The shared object call should take a connection parameter of 0 and cannot be called asynchronously.
+
+\subsection{Exporting an API to kdb+}
+
+\begin{lstlisting}
+#ifndef FEEDHANDLER_API_H
+#define FEEDHANDLER_API_H
+
+#undef UNICODE
+#define WIN32_LEAN_AND_MEAN
+
+// … other required include files
+
+#define KXVER 3
+#define WIN32 1
+#include "k.h"
+
+#define FEEDHANDLER_API extern "C" __declspec(dllexport)
+
+FEEDHANDLER_API K init(K x);
+FEEDHANDLER_API K halt(K x);
+FEEDHANDLER_API K get_args(K x);
+
+#endif
+\end{lstlisting}
+
+In this example the init function is the way the user will start the feed handler. It will accept
+arguments as a dictionary. We will also provide a zero-argument halt function that disconnects from
+the feed and will de-allocate any memory that was used during the last run. The last function get\_args
+will return a dictionary that contains the arguments that were passed to init. The examples below show
+how this API could be used from q. The library in the examples will be called FeedHandlerLibrary.dll.
+
+\begin{lstlisting}
+q) .fh.init:`FeedHandlerLibrary 2:(`init;1) / Load in the init, get_args and halt functions
+q) .fh.get_args:`FeedHandlerLibrary 2:(`halt;1)
+q) .fh.halt:`FeedHandlerLibrary 2:(`get_args;1)
+q) .fh.init[(`username`password)!(`$"exampleuser";`$"examplepass")]
+[2015:03:20 16:58:01] - Starting Feed Handler process
+[2015:03:20 16:58:01] - Setting up connection with tickerplant process: 127.0.0.1:7010
+...
+q) .fh.get_args[]
+username | `exampleuser
+password | `examplepass
+q) .fh.halt[]
+[2015:03:20 16:58:16] - Stopping Feed Handler 
+\end{lstlisting}
+
+\subsection{Argument Parsing}
+
+The first part of the implementation that we will focus on is the argument parsing part of the
+feed handler. When we are running as a shared object, the init function will be taking a K object
+as its argument that should be of type dictionary. In our implementation, the init function will
+immediately pass the dictionary to a function called ProcessArgs which performs type checking of
+the arguments and parses them into a C struct that will be used throughout the rest of the program.
+An example of how the init function is structured is listed below:
+
+\begin{lstlisting}
+K init(K argsdict)
+{
+	// ... other pre-argument parsing initialization code
+	
+	if (!ProcessArgs(argsdict)) {
+		return halt_on_error("unable to process the arguments dictionary!");
+	}
+	
+	// ... other post-argument parsing initialization code
+	
+	return (K) 0;
+}
+\end{lstlisting}
+
+The implementation of the ProcessArgs function for a small number of the possible arguments is shown
+below. You should be careful when processing a dictionary as it can map from almost any kdb+ to any
+other kdb+ type. This means that you cannot assume that the user will be passing symbols or character
+vectors as the keys to the dictionary. In this case we will just check that the keys are a list of
+symbols and then throw an error otherwise.
+
+\begin{lstlisting}
+bool ProcessArgs(K x)
+{
+	// If we were not passed a K object, then we should create an empty dictionary.
+	if (IsUndefined(x->t)) {
+		x = xD(ktn(KS,0),ktn(KS,0));
+	}
+
+	// If we get a non dictionary type we should return with an error;
+	if (!IsDictionary(x->t)) {
+		krr("expecteddict");
+		return false;
+	}
+
+	K keys = kK(x)[0];
+	K values = kK(x)[1];
+
+	for(int i = 0, n = (int) keys->n; i < n; i++) {
+		S key = kS(keys)[i];
+		K value = kK(values)[i];
+
+		if (0 == strcmp(key, "tapefile")) {
+			SetTapeFile(value);
+		} else if (0 == strcmp(key, "stripenum")) {
+			SetStripeNum(value);
+		}
+	}
+
+	return true;
+}
+\end{lstlisting}
+
+The standalone executable will reuse this code from the shared library by taking the arguments from the
+command line, placing them into a K object and then calling the init function again. This means that we
+have one central place for configuring the startup logic of the program which makes the application much
+more maintainable.
+
+\begin{lstlisting}
+int main(int argc, char *argv[])
+{
+	// parse arguments from command line into a settings struct
+	// & initialize the q runtime by calling khp before we touch
+	// any K objects.
+
+	// Create the vector of keys for the arguments dictionary
+	K keys = ktn(KS, 4);
+	kS(keys)[0] = ss(“kdbuser”);
+	kS(keys)[1] = ss(“kdbpass”);
+	kS(keys)[2] = ss(“kdbhost”);
+	kS(keys)[3] = ss(“kdbport”);
+
+	// Create the mixed list of values for the arguments dictionary
+	K values = knk(0, 4);
+	kK(values)[0] = ks(settings.user);
+	kK(values)[1] = ks(settings.pass);
+	kK(values)[2] = ks(settings.host);
+	kK(values)[3] = ki(settings.port);
+
+	// Create the dictionary from the keys and values and then call
+	// the same init function that would be called directly from the
+	// q process.
+	init(xD(keys, values));
+
+	return EXIT_SUCCESS;
+}
+\end{lstlisting}
+
+\section{Parsing Data/Serialization}
+
+\subsection{Capturing and Storing Updates}
+
+Now that we have some code to initialize our feed handler with some arguments and an API that can be accessed
+from C, we can now focus on an example of how to parse data from a feed and push it to kdb+.
+
+Different feeds will provide different styles of API for processing the data. In some cases the feed will
+provide updates one at a time and have the data parsed for you, others will need to be in some raw format and
+require parsing.
+
+Because the APIs for these feeds differ so much, we will create our own simplified API so that we can focus on
+creating K objects and pushing them to the q process. Many feeds such as (EbsLive) will provide a socket that
+can be used in conjunction with the select() call in order to receive updates. Other implementations will hide
+this communication and instead provide callbacks (through virtual functions or function pointers) that can be
+registered to specific types of events.
+
+It is also often a requirement to be able to filter the data that is being sent by the feed. Filtering can be
+performed by having the output configured up stream (i.e. via contract with the feed provider) or by setting
+flags in the API to indicate that you don't want to receive certain events. If neither of these two options
+are available then you will need to implement the filtering yourself, either in the feed handler or in the
+tickerplant part of the code.
+
+We will assume that the Feed API itself is callback/event based via a simplified function called ProcessFeed.
+It will take a C function as one of its parameters and will repeatedly call this function every time a trading
+or system event occurs. It will pass a simplified 'FeedData' data structure that contains the message type and
+the data for the message that is to be parsed into a K object.
+
+\begin{lstlisting}
+// We will assume that a function like the one below exists and that it
+// will call the fn passed to it each time it gets an event. A real API
+// would be more complex to set up and it would involve configuration to
+// specify which tables, events, symbols you are interested in.
+int ProcessFeed(void (*fn)(const FeedData *data));
+\end{lstlisting}
+
+Our implementation of the callback will then effectively be a switch statement that determines the message type
+that is being processed by reading the FeedData object and then parses the data into the appropriate types of K
+objects.
+
+\begin{lstlisting}[language=C]
+#define column(name, type) ktn((type),0)
+
+static inline K CreateTradeSchema()
+{
+	return knk(6,
+		column("symbol", KS),		 // symbol
+		column("system time", KP),	 // timestamp
+		column("price", KF),		 // float
+		column("size", KJ),			 // long
+		column("condition", KH),	 // short
+		column("sequence", KJ));	 // long
+}
+\end{lstlisting}
+
+The schema for the objects that are being sent via kdb+ are defined as a mixed list of lists that we will append
+to. A simple column macro will make the creation of the schema a bit more clear. The first argument to the macro
+is a string (which is ignored and is just for documentation purposes), and the second is the type of that column
+in kdb+.
+
+Storing our updates as a mixed list of primitive typed lists allows us to batch updates if required and also to
+store the data more efficiently than if we sent individual rows to kdb+.
+
+The initial time field for the data is also omitted from the schema, but will be appended to the data automatically
+once it reaches the tickerplant. When we are performing batched updates however, this means that all items in the
+same batch will have the same time stamp. For applications that need very accurate timestamps, it may be a good idea
+to provide another time stamp field that reports the exchange/feed time.
+
+The schema for your table should be matched up with the kdb+ types as close as possible to make sure the data is
+stored and processed efficiently.  A full list of types can be found on the Kx Systems Wiki at: 
+\url{http://code.kx.com/wiki/Cookbook/InterfacingWithC}
+
+\subsection{Building K Objects from the Feed Data}
+
+With the data structure that will hold our updates defined, we can start to parse the data from the callback into
+the K object. The main functions that we will use to implement this are the js/ja functions. They allow us to append
+symbols and other atoms to existing lists. They will automatically reallocate space as needed for the data, so this
+means that you shouldn't keep any other references to the lists.
+
+\begin{lstlisting}
+void ParsingCallback(const FeedData *data)
+{
+	// This holds the trade data until we are ready to publish it to kdb+.
+	static K trades = CreateTradeSchema();
+
+	switch (data->messagetype) {
+	case TRADE:
+	// We fetch the relevant column from the mixed list by using
+	// kK(trades)[x] and then get a reference to that so that we
+	// can append new atoms with js/ja.
+	js(&kK(trades)[0], ss(data->cstring_symbol);
+	ja(&kK(trades)[1], &data->systime);
+	ja(&kK(trades)[2], &data->price);
+	ja(&kK(trades)[3], &data->size);
+	ja(&kK(trades)[4], &data->cond);
+	ja(&kK(trades)[5], &data->sequence);
+	break;
+	// … cases that handle other message types.
+	}
+
+	// .. send the trades data to the kdb+ process by communicating over
+	// the sockets (this will be explained in the next section).
+	if (lastupdatesent > batchtime) SendToKDB(“trades”, trades);
+}
+\end{lstlisting}
+
+Because we are storing the data directly into the lists as primitives, we don't need to build any K objects.
+The only adjustment we need to make to the trade data is to convert the system time sent by the feed.
+
+\subsection{Serializing the K Objects across a socket}
+
+The SendToKDB function performs the serialization of the data and then sends it over the socket. A function called
+CreatePayload wraps the data up in a dictionary that contains some useful information such as the table name and the
+message type alongside the data. The implementation of CreatePayload is not shown here, but it just returns a standard
+dictionary as a K object.
+
+\begin{lstlisting}
+void SendToKDB(char *tablename, K data)
+{
+#ifdef FEEDHANDLER_STANDALONE
+	k(FeedHandler.tphandle, “.u.upd”, ks(tablename), data, (K) 0);
+#else
+	static const int BUFFER_SIZE = 8192;
+	static char buf[BUFFER_SIZE];
+
+	// This is where we create the K object structure that
+	// we want to send to the main thread.
+	K payload = CreatePayload(tablename, data);
+
+	// Serialize the K object and then release the original copy
+	// so no memory is leaked. Note that we use -1 in this instance
+	// as we are running as a shared object in kdb v3.x.
+	K bytes = b9(-1, payload);
+	r0(payload);
+
+	// Copy the size of the serialized message into front of the buffer
+	// followed by the serialized content itself.
+	memcpy(buf, (char *) &bytes->n, sizeof(J));
+	memcpy(&buf[sizeof(J)], kG(bytes), (size_t) bytes->n);
+
+	// Send the message to the socket and then release the K object that
+	// holds the serialized contents.
+	send(CLIENT_SOCK, buf, (int) (sizeof(J) + bytes->n), 0);
+
+	// We must clean up the serialized K object as it is not passed to any
+	// kdb+ functions that would release it.
+	r0(bytes);
+#endif
+}
+\end{lstlisting}
+
+The implementation of the SendToKDB function is split into two parts for the standalone and shared library. The standalone
+implementation of SentToKDB is very simple as it just needs to send the data directly to the ticker plant q process. We can
+just use the k function to do this by calling .u.upd with the table name and the row data that needs to be inserted.
+
+Once the data is sent from the background thread, the main thread will call the ProcessUpdate callback that was registered
+with sd1 to allow us to de-serialize the data and then forward it onto kdb+.
+
+\subsection{Memory Management Notes}
+
+It is important that you pay attention to the kdb+ reference counting system
+and the life cycle of your K objects when passing data between threads. You should make use of the \textbf{r0} and \textbf{r1} functions in order to make sure that objects are not destroyed unexpectedly. Any K objects that are created in a thread \textbf{must} be destroyed within the same
+thread! You should also note that some functions from the C API such as \textbf{k} will call r0 on their arguments while others such as \textbf{b9} will not. Because of the way kdb+ allocates memory, it can make traditional leak checking tools such as Valigrind\footnote{http://valgrind.org/} less effective. You should make use of tools such as top/free and the .Q.w[] function in kdb+ in order to check for memory leaks
+(checking the amount used by the process).
+
+In the background threads that we create to do work, we must also call the \textbf{m9} function just before they terminate. This is because kdb+ allocates memory on a thread by thread basis, and it needs to know when the thread has completed so it can release the memory allocated to that thread pool.
+
+\section{Shutting Down}
+
+The halt function is the last part of our example Tickerplant API that we need to implement. This function takes 0 arguments
+and just shuts down all the threads, cleans up the sockets and releases any other memory that would have been allocated during
+the init function.
+
+\begin{lstlisting}
+K halt(K x)
+{
+	if (!LIBRARY_INITIALIZED) return (K) 0;
+
+#ifndef FEEDHANDLER_STANDALONE
+	// For the shared object, we need to make sure that the sd0
+	// callback is removed.
+	sd0((I)MAIN_THREAD_SOCK);
+	// ... code to clean up sockets used for the shared library
+	//implementation.
+#endif
+	// ... code to shut down threads and unload/reset any third
+	// party libraries
+	return (K) 0;
+}
+\end{lstlisting}
+
+Note that we conditionally execute the sd0 code only when we are running as a shared library.
+
+\section{Unpacking the dictionary format}
+
+Depending on the format of the K object that was sent to the tickerplant, we may need to perform some filtering/manipulation of
+the data once it arrives. In the case where we send a simple list of atoms to the ticker plant or when we send a list of atom
+vectors (for batching), we can just let the tickerplant append a timestamp and log the data before publishing to subscribers.
+
+The dictionary format however needs to be unpacked so that it can be forwarded on to the tickerplant. One way to implement this
+is to cache the table schemas that are available when the tickerplant is first started. We can use this information to build
+updates that will match our schemas regardless of what the feed handler sends.
+
+\begin{lstlisting}
+// example of the required table data for unpacking the dictionary format
+.fh.tables:(tables`.)!{[x] first 0# delete time from `. x} each tables`.
+\end{lstlisting}
+
+Once we have the table schemas, we can extract the data from the feed handler message and call a function to convert this into
+a valid tickerplant update. We can then send the result straight to the tickerplant.
+
+\begin{lstlisting}
+// definition of a function that will take a dictionary update and create a list of
+// atoms in the correct order for the tables.
+.fh.createrecord:{[t;x] (.fh.tables[t],((cols[.fh.tables[t]] inter key[x]#x))) }
+.fh.upd:{[x] .fh.send[x`table;.fh.createrecord[x`table;x`data]]; }
+\end{lstlisting}
+
+It may be convenient to filter messages in the tickerplant as the q code is easy to modify and maintain. For performance however,
+it is better to filter messages in the feed hander so that you prevent data hitting the network where it is not required.
+
+
+
