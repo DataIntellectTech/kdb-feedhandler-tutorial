@@ -9,7 +9,8 @@ each platform to highlight some of the requirements specific to each. We will in
 cross platform issues as we present code, and examples of how to work around these problems can be
 found in the example source code.
 
-The first file you will need to download from the Kx subversion repository is the \verb|"k.h"| header\footnote{http://code.kx.com/svn/kx/kdb+/c/c/k.h}. You should include this header whenever you
+The first file you will need to download from the Kx subversion repository is the \verb|"k.h"| 
+header\footnote{http://code.kx.com/svn/kx/kdb+/c/c/k.h}. You should include this header whenever you
 need to interface with kdb+ as it defines all of the types and functions that are necessary. The same
 header file is used with both version \textbf{2.x} and \textbf{3.x} of kdb+ and the version is selected
 by defining \verb|KXVER| to be either \textbf{2} or \textbf{3}. If \verb|KXVER| is not defined, the
@@ -69,7 +70,8 @@ multiple processes, so you should also use the \textbf{-fpic} flag when compilin
 
 You do not need to link against any other objects in order to build or load the library on Linux. To check
 that the correct functions have been exported, you can use tools such as \textbf{objdump} to inspect the binary
-and view the symbol tables. Passing objdump the \textbf{-t} flag will make it print the symbol tables to the console, and you can look for your function name in the rightmost column of the output.
+and view the symbol tables. Passing objdump the \textbf{-t} flag will make it print the symbol tables to the console,
+and you can look for your function name in the rightmost column of the output.
 
 \begin{figure}[h]
 	\begin{lstlisting}
@@ -91,8 +93,9 @@ and view the symbol tables. Passing objdump the \textbf{-t} flag will make it pr
 \end{figure}
 
 One other issue you will need to take care of is that you want to make sure you are not building a 64 bit
-shared library to load into a 32 bit q process or vice versa. This can be changed with the \textbf{-m32} (for 32 bit) and \textbf{-m64} (for 64 bit) flags with GCC. Attempting to load a 64 bit shared object into a 32 bit
-q process will cause an error to be thrown and the process may exit. 
+shared library to load into a 32 bit q process or vice versa. This can be changed with the \textbf{-m32}
+(for 32 bit) and \textbf{-m64} (for 64 bit) flags with GCC. Attempting to load a 64 bit shared object into
+a 32 bit q process will cause an error to be thrown and the process may exit.
 
 \subsection{Standalone Executable}
 
@@ -127,16 +130,31 @@ functions to execute correctly.
  On Windows, it is typical to use a tool set such as \textbf{Visual Studio}, rather than the commandline tools (e.g \textbf{cl.exe}). We will show how to use both Visual Studio projects and the command line in order to compile the
  code.
  
- In order to build shared objects on Windows, you will need to link against the \textbf{q.lib} file which provides the declarations of the exported objects. This is required on Windows, otherwise the functions that are defined in "k.h" will fail to link properly and the DLL file will not load into the q processes. Adding the q.lib file to your project is performed in the same way that you would add the c.obj file. You will also need to make sure you are still linking against the \textbf{ws2\_32.lib} file. One issue that may arise at runtime is crashing or inconsistent behaviour due to thread local storage (TLS). In cases where your application is incompatible TLS, an alternate implementation of c.obj called \textbf{cst.obj} is provided which should solve any issues.
+ After creating your C++ project in Visual Studio, open the Property Pages and click on \verb|Configuration Properties -> General|. Make sure that the Configuration Type is set to \textbf{Dynamic Library (.dll)}.
+
+  \begin{figure}[h]
+  	\centering
+  	\includegraphics[scale=0.50]{figures/vsdynamiclibrary.png}
+  	\caption{Creating a Dynamic Library using Visual Studio}
+  	\label{vsdynamiclibrary}
+  \end{figure}
+
+ You should then add the \textbf{ws2\_32.lib} and \textbf{q.lib} entries to your Linker inputs in the \verb|Configuration Properties -> Linker -> Input| section.  
+
+	\begin{figure}[h]
+		\centering
+		\includegraphics[scale=0.50]{figures/vsdynamiclinker.png}
+		\caption{Adding the \textit{ws2\_32.lib} and \textit{q.lib} to the linker inputs using Visual Studio}
+		\label{vsdynamiclinker}
+	\end{figure}
  
- With the Visual Studio toolchain, the functions that are defined are not exported into your library
- by default. You will need to explicitly list the functions that are to be made available in your
- library by creating a \textbf{.def} file or by using the \verb|__declspec| keywords. The simplest .def file that
- will work is just a text file with EXPORTS as the first line followed by the names of any functions
- that you want to export on following lines. The example below will export the \textit{init} and \textit{halt} functions in the library. This file will also prevent any name mangling that would otherwise occur when compiling
- these functions.
+ The \textbf{ws2\_32.lib} is the WinSock2 library and is shipped with Windows, so you don't need to include it in your project. The \textbf{q.lib} file however must be downloaded from the Kx subversion repository and you must ensure that you pick either \textbf{32-bit}\footnote{http://code.kx.com/svn/kx/kdb+/w32/} or \textbf{64-bit}\footnote{http://code.kx.com/svn/kx/kdb+/w64/} depending on which version of kdb+ you are using.
  
- \begin{figure}[h]
+ You should now be able to produce a \textbf{.dll} file by adding some basic function definitions and compiling your project. The .dll file will not have any functions in it's symbol table however. This is because Visual Studio, unlike GCC on Linux, will not export any functions into a shared library unless it has been explicitly told to do so. 
+ 
+ You will need to list the functions that are to be made available in your library by creating a \textbf{.def} file or by using the \verb|__declspec|\footnote{https://msdn.microsoft.com/en-us/library/dabb5z75.aspx} attribute syntax. The simplest .def file that will work is just a text file with EXPORTS as the first line followed by the names of any functions that you want to export on following lines. The example below will export the \textit{init} and \textit{halt} functions in the library. This file will also prevent any name mangling that would otherwise occur when compiling these functions (remember that Visual Studio is a C++ compiler!).
+ 
+ \begin{figure}[H]
  \begin{lstlisting}
  EXPORTS
  init
@@ -145,7 +163,7 @@ functions to execute correctly.
  \caption{A .def file that tells the windows compiler to make the \textit{init} and \textit{halt} functions available in the symbol table}
  \end{figure}
  
- If you are compiling with the \verb|__declspec| declaration on your functions, the names that are exported will be mangled which makes it difficult (if not impossible) to import these functions into kdb+. To solve this, you will need to prefix your functions with extern "C" to tell the compiler to pass your function names through untouched. It may be helpful to define a macro as below to prefix your functions with to make sure that your API functions are exported correctly.
+ If you are compiling with the \verb|__declspec| declaration on your functions, the names that are exported will be mangled which makes it difficult (if not impossible) to import these functions into kdb+. To solve this, you will also need to prefix your functions with extern "C" to tell the compiler to pass your function names through untouched. It may be helpful to define a macro as below to prefix your functions with to make sure that your API functions are exported correctly.
 
 \begin{figure}[h]
  \begin{lstlisting}
@@ -157,7 +175,8 @@ functions to execute correctly.
  \caption{Explicitly making functions visible using the \textit{\_\_declspec} keyword}
  \end{figure}
  
- Examples of using cl.exe to compile code as a dynamically linked library can be found at: \url{http://code.kx.com/svn/kx/kdb+/c/c/c.a}
+ Examples of using cl.exe to compile code as a dynamically linked library can be found in the
+ \textbf{c.a}\footnote{http://code.kx.com/svn/kx/kdb+/c/c/c.a} code sample on the Kx subversion repository.
  
  \subsection{Standalone Executable}
  
