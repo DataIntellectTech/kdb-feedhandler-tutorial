@@ -68,16 +68,19 @@ unpacking process we receive a list of atoms which are then pushed to the q proc
 some meta data about the message, such as the time the message was sent and the table that it
 should be pushed to.
 
-This makes use of a .fh.tables dictionary that just maps table names to the column names that
+This makes use of a \verb|.fh.tables| dictionary that just maps table names to the column names that
 are present in that table. The example below shows how this could be implemented. Note that the
 .fh.createrecord function will drop or fill data as appropriate and also reorder the columns to
 fit the table schema.
 
+\begin{figure}
 \begin{lstlisting}
 .fh.tp: .. // this is the handle to the q process
 .fh.upd:{[x] .fh.tp(`.u.upd;.fh.createrecord[x`table;x`data]) }
 .fh.createrecord:{[t;x] (.fh.tables[t],((cols[.fh.tables[t]] inter key[x])#x))}
 \end{lstlisting}
+\caption{Definitions of \textit{.fh.upd} and \textit{.fh.createrecord} that will unpack the dictionary structure}
+\end{figure}
 
 The alternative is to have the feed handler just push a list of atoms directly to the q process
 which can provide a performance boost but at the cost of flexibility (the feed handler would
@@ -113,6 +116,7 @@ subscribe to the contents of the feed. No login or instrument subscription
 logic will be included in the examples. The function that we use to listen for
 new trades and quotes is called ProcessFeed.
 
+\begin{figure}
 \begin{lstlisting}[language=C]
 /**
 * ProcessFeed is a simple function that populates the statically allocated
@@ -121,15 +125,30 @@ new trades and quotes is called ProcessFeed.
 */
 void ProcessFeed(int (*) (const FeedData *));
 \end{lstlisting}
+\caption{The declaration of the callback function ProcessFeed}
+\end{figure}
 
-The function that is passed into ProcessFeed should expect to take a single parameter which is a pointer to a FeedData struct (which holds the trade/quote data) and return an integer which indicates if the feed should continue sending data.
+The function that is passed into ProcessFeed should expect to take a single parameter
+which is a pointer to a FeedData struct (which holds the trade/quote data) and return
+an integer which indicates if the feed should continue sending data.
 
-The FeedData data structure is a tagged union. A member called \textbf{type} should be checked before accessing the rest of the structure, otherwise you could be reading from invalid data. For example, one you determine that the data received is trade data, you can read the members in \textbf{data->core.*} (which are common to both trades and quotes) and also the data in \textbf{data->msg.trade.*}.
+The FeedData data structure is a tagged union. A member called \textbf{type} should
+be checked before accessing the rest of the structure, otherwise you could be reading
+from invalid data. For example, one you determine that the data received is trade data,
+you can read the members in \textbf{data->core.*} (which are common to both trades and
+quotes) and also the data in \textbf{data->msg.trade.*}.
 
-The Feed itself is not intended to replicate a real feed in terms of the number of updates received, or in ensuring that the trades and quotes pair off correctly. It is intended solely to demonstrate connecting to a feed and serializing the data that
-is received.  The FeedData structure is generated within the feed library itself and will be allocated in a static, shared piece of memory. A reference to this structure will then be passed to the feed handler on each callback (this is a common strategy in implementing these types of feeds).
+The Feed itself is not intended to replicate a real feed in terms of the number of updates
+received, or in ensuring that the trades and quotes pair off correctly. It is intended solely
+to demonstrate connecting to a feed and serializing the data that is received.  The FeedData
+structure is generated within the feed library itself and will be allocated in a static, shared
+piece of memory. A reference to this structure will then be passed to the feed handler on each
+callback (this is a common strategy in implementing these types of feeds).
 
-The \verb|feed.so/feed.dll| will be built automatically alongside the code for the feed handler itself, but as a separate object file. The feed itself has no dependencies and is platform independent, so if you would like to use the feed for your own experiments, you should just copy both the \verb|fakefeed.h| header file and the shared object into your own project.
+The \verb|feed.so/feed.dll| will be built automatically alongside the code for the feed handler
+itself, but as a separate object file. The feed itself has no dependencies and is platform
+independent, so if you would like to use the feed for your own experiments, you should just copy
+both the \verb|fakefeed.h| header file and the shared object into your own project.
 
 \begin{figure}[h]
 \begin{lstlisting}[language=C]
@@ -166,7 +185,8 @@ typedef struct _FeedData {
 \caption{The FeedData structure that is populated by the fake feed}
 \end{figure}
 
-The ProcessFeed function expects a constant \verb|FF_CONTINUE_FEED| to be returned if the feed should continue to process messages, and \verb|FF_HALT_FEED| to be returned if not. These constants are defined in the \verb|fakefeed.h| header file.
+The ProcessFeed function expects a constant \verb|FF_CONTINUE_FEED| to be returned if the feed should continue to process messages,
+and \verb|FF_HALT_FEED| to be returned if not. These constants are defined in the \verb|fakefeed.h| header file.
 
 \begin{figure}
 \begin{lstlisting}[language=C]
@@ -190,17 +210,19 @@ int ExtractData(const FeedData *data)
 }
 
 \end{lstlisting}
-\caption{}
+\caption{Example of processing messages from a feed in the callback}
 \end{figure}
 
 \section{Error Handling}
 
-The error handling in the example code is kept to a minimum in order to keep the code simple, however in practice the library code will need to be able to
-throw errors in both standalone and shared object formats. In order to handle errors in this way, we need to use macro's to conditionally compile some parts of
-the code. The function should just print an error to stderr when we are running as a standalone executable and then exit. For the shared library, we need to
-return krr from our function so that it reaches the kdb+ process and raises a signal. This behaviour makes it easy for users to respond to different types of errors
-in their q scripts without it just killing their process.
+The error handling in the example code is kept to a minimum in order to keep the code simple, however in practice the
+library code will need to be able to throw errors in both standalone and shared object formats. In order to handle errors
+in this way, we need to use macro's to conditionally compile some parts of the code. The function should just print an
+error to stderr when we are running as a standalone executable and then exit. For the shared library, we need to return
+krr from our function so that it reaches the kdb+ process and raises a signal. This behaviour makes it easy for users to
+respond to different types of errors in their q scripts without it just killing their process.
 
+\begin{figure}
 \begin{lstlisting}
 ////
 // If called inside the standalone executable, this function will print the error to stderr and then exit
@@ -218,11 +240,18 @@ K halt_on_error(const char *lngmsg, const char *kdbmsg)
 #endif
 }
 \end{lstlisting}
+\caption{Definition of halt\_on\_error that will terminate in a standalone executable and raise a signal in a shared object}
+\end{figure}
 
 The function can then be used in the code by calling it and returning it's result to kdb+. 
 
+\begin{figure}
 \begin{lstlisting}
 K init(K x) {
-	return halt_on_error("error: argument dictionary is invalid!", "badargs");
+	if (!ProcessArgs(argv, argc)) {
+		return halt_on_error("error: argument dictionary is invalid!", "badargs");
+	}
 }
 \end{lstlisting}
+\caption{Using the halt\_on\_error function to signal errors in init}
+\end{figure}

@@ -1,14 +1,14 @@
 \chapter{Introduction}
 
-The goal of this document is to demonstrate a design for a feed handler that allows it to be run as both a standalone executable and as a shared library that can be loaded into a q processes. The architecture for the feed handler should share as much code as possible in order to increase maintainability. In order to facilitate this architecture, all processing of the data from the feed will take place in a background thread so that the main thread of the q process is still responsive. This use of threading can introduce its own problems when you need to marshal data between the feed handler and the main q process, which we provide a solution for in this paper. The solution provided is just one of the possible ways to structure a feed handler and may or may
-not be the best solution depending on the circumstances.
+The goal of this document is to demonstrate a design for a feed handler that interfaces with Kx Systems kdb+ database \footnote{http://kx.com/software.php}. The design allows it to be compiled as both a standalone executable and as a shared library. The standalone executable will run as its own process and communicate with the q processes via IPC. The shared library can be loaded into the q process that wants to collect the data, resulting in lower latency between the feed handler and the receiving process.
+
+The architecture for the feed handler should share as much code as possible in order to increase maintainability. In order to facilitate this, all processing of the data from the feed will take place in a background thread so that the main thread of the q process is still responsive. This use of threading can introduce its own problems when you need to marshal data between the feed handler and the main q process, which we provide a solution for in this paper. The solution provided is just one of the possible ways to structure a feed handler and may not be suitable for more specialized use cases.
 
 To begin, the document will also quickly cover some of the basics of compiling and linking
 the different types of binaries (executables and libraries) on each platform and explain
 how to load and use the libraries within a q process. If you don't have a kdb+tick system
 already set up to test your feed handler, you can download the \textbf{AquaQ TorQ}\footnote{https://github.com/AquaQAnalytics/TorQ} and the
-\textbf{AquaQ TorQ Starter Pack}\footnote{https://github.com/AquaQAnalytics/TorQ-Finance-Starter-Pack}. TorQ should allow you to get up and
-running with a production grade kdb+tick setup as soon as possible.
+\textbf{AquaQ TorQ Starter Pack}\footnote{https://github.com/AquaQAnalytics/TorQ-Finance-Starter-Pack}. TorQ should allow you to get up and running with a production grade kdb+tick setup as soon as possible. The final section of the document will show you how to integrate the feed handler with the TorQ starter pack to provide a realistic use case.
 
 
 

@@ -15,10 +15,13 @@ are called. If you are not able to open the connection to the q process immediat
 call khp as the very first step in your program but with a port of -1 e.g. khp("",-1). Any code that is
 running as a shared object should already have the run time initialized correctly by the q process.
 
+\begin{figure}
 \begin{lstlisting}
 int conn = khp("localhost", 7010);
 if (conn <= 0) { fprintf(stderr, "connection failed!\\n"); exit(EXIT_FAILURE); }
 \end{lstlisting}
+\caption{Opening a connection to a q process with khp}
+\end{figure}
 
 Note that a shared library cannot use the khp function to open a connection to another q process and
 will not compile as these functions are missing from q.lib! If you want to share code between the shared
@@ -30,9 +33,12 @@ the first argument set as the handle, the second argument is a string that shoul
 and the remaining arguments are K objects that should be passed as arguments to the q expression followed
 by a terminating NULL.
 
+\begin{figure}
 \begin{lstlisting}
 k(conn, "a:42", (K) 0);
 \end{lstlisting}
+\caption{Assigning the value 42 to a variable \textit{a} on a q process}
+\end{figure}
 
 If the handle is negative; then the k() function will operate asynchronously. This simple use of the k() 
 function is how the feed handler will communicate with other processes. One thing to take note of is that
