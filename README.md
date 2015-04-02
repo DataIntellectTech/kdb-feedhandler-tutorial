@@ -52,8 +52,17 @@ The resulting directory after running a build should look like this:
 
 Once the build is complete, navigate to the `bin` directory and execute:
 
-This will load the C shared object and bind the functions to names (*init* and *halt*). Instructions
-and example commands should be displayed as soon as the the makeprint.q script loads.
+    q run.q
+
+on Windows plaforms or on Linux:
+
+    ./run.sh
+
+The `run.sh` script just sets the `LD_LIBRARY_PATH` to look in the current directory before running
+the run.q script.
+
+This will load the C shared objects and bind the functions to names (*init* and *halt*). Instructions
+and example commands should be displayed as soon as the the run.q script loads.
 
 ```apl
 ##
