@@ -12,8 +12,8 @@ where appropriate. For a complete example see the code that accompanies this doc
 The first step you should take in a standalone C program that will be creating and sending K objects
 is to initialise the kdb+ runtime. This occurs automatically whenever a call to any of the khp* functions
 are called. If you are not able to open the connection to the q process immediately, then you should still
-call khp as the very first step in your program but with a port of -1 e.g. khp("",-1). Any code that is
-running as a shared object should already have the run time initialized correctly by the q process.
+call \verb|khp| as the very first step in your program but with a port of -1 e.g. \verb|khp("",-1)|. Any code
+that is running as a shared object should already have the run time initialized correctly by the q process.
 
 \begin{figure}
 \begin{lstlisting}
@@ -23,9 +23,10 @@ if (conn <= 0) { fprintf(stderr, "connection failed!\\n"); exit(EXIT_FAILURE); }
 \caption{Opening a connection to a q process with khp}
 \end{figure}
 
-Note that a shared library cannot use the khp function to open a connection to another q process and
-will not compile as these functions are missing from q.lib! If you want to share code between the shared
-library and the standalone executable, you will need to conditionally compile these parts of the code.
+Note that a shared library cannot use the \textit{khp} function to open a connection to another q process
+and will not compile as these functions are missing from q.lib! If you want to share code between the
+shared library and the standalone executable, you will need to conditionally compile these parts of
+the code. Download the sample code to see how this is achieved.
 
 The value returned from the khp call is an integer that represents the connection handle. This handle
 can now be used to send queries and K objects to a q process. To do this, we use the k function with
@@ -40,30 +41,33 @@ k(conn, "a:42", (K) 0);
 \caption{Assigning the value 42 to a variable \textit{a} on a q process}
 \end{figure}
 
-If the handle is negative; then the k() function will operate asynchronously. This simple use of the k() 
-function is how the feed handler will communicate with other processes. One thing to take note of is that
-all function calls in q take at least 1 argument! If you need to call a function that takes no arguments,
-you should just pass an integer or a null.
+If the handle is negative; then the \verb|k| function will operate asynchronously. This simple use of the \verb|k| function is how the feed handler will communicate with other processes. One thing to take note
+of is that all function calls in q take at least 1 argument! If you need to call a function that takes
+no arguments, you can pass in a random value such as ki(0) as the arguments that are passed in will have
+their reference count decremented with \verb|r1|.
 
+\begin{figure}
 \begin{lstlisting}
-k(conn, "function", ki(15), kf(3.142), (K) 0);
+k(conn, "test", ki(15), kf(3.142), (K) 0);
 \end{lstlisting}
+\caption{Passing two arguments to a function called \textit{test}}
+\end{figure}
 
-The standard kdb+ tick.q script has a .u.upd function expects two arguments. The first is a symbol that
-indicates the table that the data should be stored in. The second argument is the data itself which should
-be either a list that represents a single row, or a list of column vectors to represent a batch of updates.
-The time column in either case is optional and it can be appended automatically by the script (which is
-usually preferable in most setups).
+The standard kdb+ tick.q script has a \verb|.u.upd| function expects two arguments. The first is a
+symbol that indicates the table that the data should be stored in. The second argument is the data itself which should be either a list that represents a single row, or a list of column vectors to represent a batch of updates. The time column in either case is optional and it can be appended automatically by the script (which is usually preferable in most setups). The example below shows how to send a symbol as the first argument and an update row to the \verb|.u.upd| function.
 
+\begin{figure}
 \begin{lstlisting}
 k(conn, ".u.upd", ks("trade"), knk(3, ks("IBM"), kf(363.242), kj(2424)));
 \end{lstlisting}
+\caption{Example of calling \textit{.u.upd} on a process via the C API}
+\end{figure}
 
-If you are running as part of a shared library, you can still use the k function to send messages to the q
-process. The shared object call should take a connection parameter of 0 and cannot be called asynchronously.
+If you are running as part of a shared library, you can still use the k function to send messages to the q process. The shared object call should take a connection parameter of 0 and cannot be called asynchronously.
 
 \subsection{Exporting an API to kdb+}
 
+\begin{figure}
 \begin{lstlisting}
 #ifndef FEEDHANDLER_API_H
 #define FEEDHANDLER_API_H
@@ -85,13 +89,16 @@ FEEDHANDLER_API K get_args(K x);
 
 #endif
 \end{lstlisting}
+\caption{Defining the feed handler API in a header file}
+\end{figure}
 
 In this example the init function is the way the user will start the feed handler. It will accept
 arguments as a dictionary. We will also provide a zero-argument halt function that disconnects from
 the feed and will de-allocate any memory that was used during the last run. The last function get\_args
 will return a dictionary that contains the arguments that were passed to init. The examples below show
-how this API could be used from q. The library in the examples will be called FeedHandlerLibrary.dll.
+how this API could be used from q. The library in the examples will be called \verb|FeedHandlerLibrary.dll|.
 
+\begin{figure}
 \begin{lstlisting}
 q) .fh.init:`FeedHandlerLibrary 2:(`init;1) / Load in the init, get_args and halt functions
 q) .fh.get_args:`FeedHandlerLibrary 2:(`halt;1)
@@ -106,16 +113,18 @@ password | `examplepass
 q) .fh.halt[]
 [2015:03:20 16:58:16] - Stopping Feed Handler 
 \end{lstlisting}
+\caption{Using the init and halt functions that are imported from the shared library}
+\end{figure}
 
 \subsection{Argument Parsing}
 
-The first part of the implementation that we will focus on is the argument parsing part of the
-feed handler. When we are running as a shared object, the init function will be taking a K object
-as its argument that should be of type dictionary. In our implementation, the init function will
-immediately pass the dictionary to a function called ProcessArgs which performs type checking of
-the arguments and parses them into a C struct that will be used throughout the rest of the program.
-An example of how the init function is structured is listed below:
+The first part of the implementation that we will focus on is the argument parsing within the
+feed handler. When we are running as a shared object, the \verb|init| function will be taking
+a K object as its argument that should be of type dictionary. In our implementation, the \verb|init|
+function will immediately pass the dictionary to a function called ProcessArgs which performs type checking of the arguments and parses them into a C struct that will be used throughout the rest of the program.
+An example of how the \verb|init| function is structured is listed below:
 
+\begin{figure}
 \begin{lstlisting}
 K init(K argsdict)
 {
@@ -130,13 +139,12 @@ K init(K argsdict)
 	return (K) 0;
 }
 \end{lstlisting}
+\caption{Calling the argument parsing code from the \textit{init} function. The value of \textit{halt\_on\_error} is returned in order to stop the q process if required}
+\end{figure}
 
-The implementation of the ProcessArgs function for a small number of the possible arguments is shown
-below. You should be careful when processing a dictionary as it can map from almost any kdb+ to any
-other kdb+ type. This means that you cannot assume that the user will be passing symbols or character
-vectors as the keys to the dictionary. In this case we will just check that the keys are a list of
-symbols and then throw an error otherwise.
+An implementation of the \verb|ProcessArgs| function for a small number of the possible arguments is shown below. You should be careful when processing a dictionary using the C API as it can map from almost any kdb+ to any other kdb+ type. This means that you cannot assume that the user will be passing symbols or character vectors as the keys to the dictionary. In this case we just assume that the keys of the dictionary will always be symbols for simplicity.
 
+\begin{figure}
 \begin{lstlisting}
 bool ProcessArgs(K x)
 {
@@ -168,12 +176,18 @@ bool ProcessArgs(K x)
 	return true;
 }
 \end{lstlisting}
+\caption{}
+\end{figure}
 
 The standalone executable will reuse this code from the shared library by taking the arguments from the
 command line, placing them into a K object and then calling the init function again. This means that we
 have one central place for configuring the startup logic of the program which makes the application much
-more maintainable.
+more maintainable. As stated previously in the document, it is not possible to just use shared
+library that is generated directly from the standalone executable. The binary generated for the
+shared library doesn't contain any implementations of the required functions and will crash at
+runtime if the c.obj file is not also included during compilation.
 
+\begin{figure}
 \begin{lstlisting}
 int main(int argc, char *argv[])
 {
@@ -203,6 +217,8 @@ int main(int argc, char *argv[])
 	return EXIT_SUCCESS;
 }
 \end{lstlisting}
+\caption{}
+\end{figure}
 
 \section{Parsing Data/Serialization}
 

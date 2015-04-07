@@ -128,7 +128,6 @@ q)count quote
 467599
 q)halt[]
 q)10#trade
-q)10#trade
 time                          sym  exg  size volume sequence price cond                  
 -----------------------------------------------------------------------------
 2015.03.30D15:29:51.186145000 GOOG BARK 334  990    102596   182.9 0x20494946
@@ -145,5 +144,126 @@ time                          sym  exg  size volume sequence price cond
 \caption{Starting and stopping the feed handler and viewing the received trades \& quotes}
 \end{figure}
 
-To stop the feed handler, just run the halt function which will cause the feed handler to stop all the background threads
-and release all unused memory that it had allocated.
+To stop the feed handler, just run the halt function which will cause the feed handler to stop all the background threads and release all unused memory that it had allocated.
+
+\section{Integration with the Starter Pack}
+
+If you have set up \textbf{TorQ} and accompanying \textbf{Financial Starter Pack}, it is possible
+to use the example feed handler as one of your data sources. To do this, you will need to copy over the binaries, modify the schema file and then integrate the feed handler into \verb|tickerplant.q|.
+
+The basic directory layout of your TorQ installation should look similar to the example below. The \verb|start_torq_demo.sh| script should start up several services including a ticker plant, rdb and hdb.
+
+\begin{figure}[h]
+\begin{lstlisting}
+aquaq:~/torq/TorQ> ls
+/home/aquaq/torq/TorQ
+total 104K
+drwxr-xr-x 7 4.0K Mar 24 11:41 code/
+drwxr-xr-x 5 4.0K Mar 24 11:41 config/
+drwxr-xr-x 3 4.0K Mar 30 14:44 hdb/
+drwxr-xr-x 5 4.0K Mar 24 11:41 html/
+drwxr-xr-x 7 4.0K Mar 24 11:41 lib/
+drwxr-xr-x 2  12K Mar 30 15:58 logs/
+drwxr-xr-x 2 4.0K Mar 17 13:10 tick/
+-rw-r--r-- 1  210 Mar 30 14:50 tickerplant.q
+-rw-r--r-- 1 2.5K Mar 17 13:10 tick.q
+-rw-r--r-- 1  20K Mar 24 11:41 torq.q
+-rw-r--r-- 1  557 Mar 30 15:46 setenv.sh
+-rwxr-xr-x 1 2.1K Mar 30 15:41 start_torq_demo.sh*
+-rwxr-xr-x 1  284 Mar 30 14:45 stop_torq_demo.sh*
+-rwxr-xr-x 1 8.5K Mar 30 15:39 fakefeed.so*
+-rwxr-xr-x 1  14K Mar 30 15:39 feedhandler.so*
+\end{lstlisting}
+\caption{Directory layout for the base TorQ install}
+\end{figure}
+
+\subsection{Installing the libraries}
+
+The libraries should be placed into the lib directory and in the appropriate subdirectory depending on the platform that you are using. For example if you have compiled the libraries on
+Windows for 32-bit processes, you should place them in the \verb|lib/w32| directory.
+
+\begin{figure}[h]
+\begin{lstlisting}
+mrooney@homer:~/torq/TorQ> ls lib/l32
+/home/mrooney/torq/TorQ
+total 436K
+-rwxr-xr-x 1 375K Mar 24 11:41 libcurl.so.4*
+-rwxr-xr-x 1 8.5K Mar 30 15:39 fakefeed.so*
+-rwxr-xr-x 1  14K Mar 30 15:39 feedhandler.so*
+-rwxr-xr-x 1  31K Mar 24 11:41 torQemail.so*
+\end{lstlisting}
+\caption{Placing the \textit{fakefeed.so} and \textit{feedhandler.so} file into the correct location for 32-bit Linux binaries}
+\end{figure}
+
+Depending on your system, you may also need set environment variables to allow the libraries to be loaded. For Linux, we need to set the
+\textbf{LD\_LIBRARY\_PATH} to point to the appropriate lib directory. Within TorQ, the best place to set this is in the \textbf{setenv.sh}
+script that is located in the root directory.
+
+\begin{figure}[h]
+\begin{lstlisting}
+# Setting LD_LIBRARY_PATH on a 32-bit Linux system:
+export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$KDBLIB/l32
+
+# Similar line that would be used on OSX:
+# 	export DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:$KDBLIB/m32
+\end{lstlisting}
+\caption{}
+\end{figure}
+
+This also means that you can just load the library by providing its name rather than its path.
+
+\subsection{Modifying the Schema}
+
+In order to change the schema, we need to modify the \verb|database.q| file that is located in the
+\verb|tick/| directory. We will add two new tables -- \verb|trade| and \verb|quote| -- to this file.
+
+\begin{figure}[h]
+\begin{lstlisting}
+trade:([]time:`timestamp$(); sym:`g#`symbol$(); exg:`symbol$(); size:(); volume:();
+			sequence:(); price:(); cond:());
+quote:([]time:`timestamp$(); sym:`g#`symbol$(); exg:`symbol$(); asksize:(); bidsize:();
+			askprice:(); bidprice:(); sequence:(); cond:());
+\end{lstlisting}
+\caption{The trade and quote schemas defined in \textit{tick/database.q}}
+\end{figure}
+
+Note that you will need to restart the processes in order for this change to take effect. To confirm that the schemas are visible, connect to the \textbf{tickerplant} or \textbf{rdb} and manually inspect the visible tables.
+
+\subsection{Updating tickerplant.q}
+
+The \textbf{tickerplant.q} script can be found in the root directory of the TorQ installation. It is a simple wrapper that helps load the default tick.q script from Kx into TorQ. We will use the dynamic load function (\textbf{2:}) to load the libraries from their location in the library folder, and then call the \textbf{init}
+function to start the feed handler in the background. It should then repeatedly call the .u.upd function in the
+feed handler.
+
+\begin{figure}[h]
+\begin{lstlisting}
+/- Example script to launch a tickerplant
+/- requires kdb+tick (tick.q and tick directory) to be in the current directory
+\l tick.q
+\l torq.q
+
+/- We can load the feed handler by importing the init/halt functions and then
+/- immediately calling init in order to start processing updates.
+init:`:./feedhandler 2:(`init;1)
+halt:`:./feedhandler 2:(`halt;1)
+init[]
+\end{lstlisting}
+\caption{The updated \textit{tickerplant.q} script that starts the feed handler}
+\end{figure}
+
+\subsection{Checking the Results}
+
+If you restart the processes, you should now notice that the trade and quote tables are being populated correctly
+by the fake feed handler. As the tickerplant and the feed handler are both part of the same process, there should
+be very little latency between the messages being parsed and then published to any subscribers.
+
+\begin{figure}[h]
+\begin{lstlisting}
+q) h:hopen 7001
+q) h"tables[]"
+`quote`trade
+q) h"count quote"
+4372876
+\end{lstlisting}
+\caption{}
+\end{figure}

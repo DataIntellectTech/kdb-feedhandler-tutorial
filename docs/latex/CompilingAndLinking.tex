@@ -127,12 +127,11 @@ functions to execute correctly.
  
  \subsection{Shared Objects}
  
- On Windows, it is typical to use a tool set such as \textbf{Visual Studio}, rather than the commandline tools (e.g \textbf{cl.exe}). We will show how to use both Visual Studio projects and the command line in order to compile the
- code.
+ On Windows, it is typical to use a tool set such as \textbf{Visual Studio}, rather than the commandline tools (e.g \textbf{cl.exe}). We will show how to use both Visual Studio projects and the command line in order to compile the code.
  
  After creating your C++ project in Visual Studio, open the Property Pages and click on \verb|Configuration Properties -> General|. Make sure that the Configuration Type is set to \textbf{Dynamic Library (.dll)}.
 
-  \begin{figure}[h]
+  \begin{figure}[H]
   	\centering
   	\includegraphics[scale=0.50]{figures/vsdynamiclibrary.png}
   	\caption{Creating a Dynamic Library using Visual Studio}
@@ -141,7 +140,7 @@ functions to execute correctly.
 
  You should then add the \textbf{ws2\_32.lib} and \textbf{q.lib} entries to your Linker inputs in the \verb|Configuration Properties -> Linker -> Input| section.  
 
-	\begin{figure}[h]
+	\begin{figure}[H]
 		\centering
 		\includegraphics[scale=0.50]{figures/vsdynamiclinker.png}
 		\caption{Adding the \textit{ws2\_32.lib} and \textit{q.lib} to the linker inputs using Visual Studio}
@@ -165,7 +164,7 @@ functions to execute correctly.
  
  If you are compiling with the \verb|__declspec| declaration on your functions, the names that are exported will be mangled which makes it difficult (if not impossible) to import these functions into kdb+. To solve this, you will also need to prefix your functions with extern "C" to tell the compiler to pass your function names through untouched. It may be helpful to define a macro as below to prefix your functions with to make sure that your API functions are exported correctly.
 
-\begin{figure}[h]
+\begin{figure}[H]
  \begin{lstlisting}
  #define FEEDLIBRARY_API extern "C" __declspec(dllexport)
  
@@ -180,16 +179,13 @@ functions to execute correctly.
  
  \subsection{Standalone Executable}
  
- On Windows you will need to get the latest c.obj files from http://code.kx.com/svn/kx/kdb+/
- in either the \textbf{w32} or \textbf{w64} folders depending on whether you want to create a 32 bit or 64 bit
- process. You will also need to compile against the Winsock2 library if running as a standalone executable as this is required by the implementations.
+ After creating your C++ project in Visual Studio, open the Property Pages and click on \verb|Configuration Properties -> General|. Make sure that the Configuration Type is set to \textbf{Application (.exe)}.
  
- If you have a Visual Studio project set up and do not want to attempt compiling from the
- command line then you just need to drop the object into the path where Visual Studio can
- find it. The easiest way to do this is to click on \textit{"Resource Files -> Add... -> Existing Item"}
- from your solution explorer.
+ You will need to get the latest \textbf{c.obj} in either the \textbf{w32}\footnote{http://code.kx.com/svn/kx/kdb+/w32} or \textbf{w64}\footnote{http://code.kx.com/svn/kx/kdb+/w64} folders depending on whether you want to create a 32-bit or 64-bit process.
  
- \begin{figure}[h]
+The easiest way to make sure that \textbf{c.obj} is added to your project is to navigate to \textit{"Resource Files -> Add... -> Existing Item"} from your solution explorer.
+ 
+ \begin{figure}[H]
  	\centering
  	\fbox{\includegraphics[scale=0.50]{figures/windows_vs2012_static_linking_alt.png}}
  	\caption{Adding an item as a Resource File via the Solution Explorer}
@@ -199,35 +195,32 @@ functions to execute correctly.
  Another way to make sure the objects are included by the linker is to add them to the "Input"
  section of your projects resource page.
  
- \begin{figure}[h]
+ \begin{figure}[H]
  	\centering
  	\includegraphics[scale=0.50]{figures/windows_vs2012_static_linking_dirs.png}
  	\caption{Adding an item as a Resource via the Input Resource Page}
  	\label{usingtheinputresourcepage}
  \end{figure}
  
- Note that we add \textbf{WS2\_32.lib} to input section of this page to make sure that the Winsock2 library is included. This file is included on the system path of any recent Windows installation (i.e. Windows XP or greater). Once the object files are visible to Visual Studio, you should be able to compile any code without issues.
+ Note that we add \textbf{ws2\_32.lib} to input section of this page to make sure that the WinSock2 library is included. This file is included on the system path of any recent Windows installation (i.e. Windows XP or greater).
  
  It is also possible to compile the code from the command line on Windows using \textbf{cl.exe}. This can be found by navigating to your Visual Studio installation
  location:
  
- \begin{figure}[h]
+ \begin{figure}[H]
  	\begin{lstlisting}
  	C:\Program Files (x86)\Microsoft Visual Studio\12.0\VC\bin.
  	\end{lstlisting}
  	\caption{Location of the cl.exe and msbuild.exe tools}
  \end{figure}
  
- This folder should be added to your system PATH, or you can run \textit{vcvars32.bat} from that folder in order to make it visible temporarily from the current session.
- 
- Examples of using cl.exe to compile code as a standalone executable can be found at: 
- \url{http://code.kx.com/svn/kx/kdb+/c/c/c.c}
+ This folder should be added to your system PATH, or you can run \textit{vcvars32.bat} within the same folder in order to make it visible in the current session. The \textbf{c.c}\footnote{http://code.kx.com/svn/kx/kdb+/c/c/c.c} sample hosted in the Kx subversion repository shows how to build an executable using \textbf{cl.exe}.
  
  \section{Loading shared objects into kdb+}
  
- Once you have your shared objects compiled, you should be able to load them into kdb+ using the 2: system call \footnote{http://code.kx.com/wiki/Reference/TwoColon}. The example q code below imports three functions: init, find and other from a shared object called example.so. The init and find functions take 0 and 1 arguments respectively. Note that import for the init function declares that it takes 1 argument however! This is because all functions in kdb+ really take at least one argument and that calling a function like init[] is equivalent to init[::].
+ Once you have your shared objects compiled, you should be able to load them into kdb+ using the \textbf{2:}(dynamic load) function\footnote{http://code.kx.com/wiki/Reference/TwoColon}. The example q code below imports three functions: init, find and other from a shared object called example.so. The init and find functions take 0 and 1 arguments respectively. Note that import for the init function declares that it takes 1 argument however! This is because all functions in kdb+ really take at least one argument and that functions with no arguments will be passed a sentinel value instead.
  
- \begin{figure}[h]
+ \begin{figure}[H]
  \begin{lstlisting}
  init:`example 2:(`init;1)
  find:`example 2:(`find;1)
@@ -238,7 +231,7 @@ functions to execute correctly.
  
  It is also possible to export these functions from your C code to make it easier to import from kdb+ if you have a large API. You will create a function that returns a dictionary that maps symbols to dynamically loaded functions. An example of such a function is shown below:
  
- \begin{figure}[h]
+ \begin{figure}[H]
  \begin{lstlisting}
  K load_funcs(K x)
  {
@@ -261,7 +254,7 @@ functions to execute correctly.
  
  We can then just execute this function from our q script and assign the result to a namespace. \textit{Note that the assignment to the namespace will erase any existing items that were defined in it!}
  
- \begin{figure}[h]
+ \begin{figure}[H]
  \begin{lstlisting}
  .fh:(`FeedHandlerLibrary 2:(`load_funcs;1))`
  \end{lstlisting}

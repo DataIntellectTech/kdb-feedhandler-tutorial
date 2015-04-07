@@ -3,4 +3,6 @@
 This document has covered the design and implementation of a typical feed handler in C or C++ using the
 Kx C API. We have demonstrated the basics of how to communicate with kdb+ using handles and K objects,
 using threads to perform work in the background and pushing data from a background thread to the main
-q thread so updates can be performed.
+q thread so updates can be performed. We have also produced sample code that replicated a real world feed
+handlers API and created a feed handler that parses the generated data, converts it to a K object and pushes
+it to the main thread of the q process.

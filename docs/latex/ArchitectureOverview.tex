@@ -5,9 +5,9 @@
 The feed handler will be designed so that as much code as possible is shared
 between the standalone version and the dynamically linked library version.
 In this implementation the standalone executable will just parse some arguments,
-wrap them up into Q/K code and then pass this to the the library init function
-to start the feed handler. The following figure shows which parts of the code
-will be shared between the two different implementations.
+wrap them up into Q/K code and then pass this to the \textit{init}
+function to start the feed handler. The following figure shows which parts of the
+code will be shared between the two different implementations.
 
  \begin{figure}[H]
  	\centering
@@ -24,14 +24,18 @@ mostly in how the feeds are initialized.
 For example, the standalone feed handler is expected to take its arguments
 from the command line whilst the shared object version takes its arguments
 as a dictionary passed to the initialization function. The standalone 
-implementation can however re-use the shared objects code by converting it's
+implementation can however re-use the shared objects code by converting its
 command line arguments into a K object that can then be passed to the 
 shared object.
 
 In order to keep as much code as possible identical between the two 
 implementations, we will implement the standalone version of the feed handler
-as a shell that just reads some arguments and then performs it's work via 
-the shared library.
+as a shell that just reads some arguments and then makes calls into the shared
+library code in order to perform its work. One problem with this approach is that
+some functions are present in the shared library that have no implementation for
+the standalone executable. This means that we cannot use the shared library directly.
+We will need to recompile the code with a flag to disable parts of the library that
+could cause issues.
 
 \section{Output Format}
 
@@ -61,17 +65,17 @@ When running the feed handler as a dynamically linked library, then we can take 
 that is passed to the q process and unpack it before forwarding it onto the q process. This
 method also allows us to easily add some filter operations before the data is forwarded.
 
-In the provided implementation, this is defined as a .fh.upd function which takes the dictionary
-data and performs some unpacking and automatic filling of data to match the schema. Through this
-unpacking process we receive a list of atoms which are then pushed to the q process using the
-.u.upd function. The dictionary data will be wrapped up inside another dictionary that contains
-some meta data about the message, such as the time the message was sent and the table that it
-should be pushed to.
+In the provided implementation, this is defined as a \textit{.fh.upd} function which takes
+the dictionary data and performs some unpacking and automatic filling of data to match the
+schema. Through this unpacking process we receive a list of atoms which are then pushed to
+the q process using the \textit{.u.upd} function. The dictionary data will be wrapped up
+inside another dictionary that contains some meta data about the message, such as the time
+the message was sent and the table that it should be pushed to.
 
 This makes use of a \verb|.fh.tables| dictionary that just maps table names to the column names that
 are present in that table. The example below shows how this could be implemented. Note that the
-.fh.createrecord function will drop or fill data as appropriate and also reorder the columns to
-fit the table schema.
+\textit{.fh.createrecord} function will drop or fill data as appropriate and also reorder the columns
+to fit the table schema.
 
 \begin{figure}
 \begin{lstlisting}
@@ -91,7 +95,7 @@ kdb+ installs without any issues.
 \section{Use of Background Threads}
 
 As we will be running the feed handler as a shared library, it will need to
-perform most of its work in a background thread so that the q processes is
+perform most of its work in a background thread so that the q process is
 still responsive. The standalone feed handler doesn't need a background thread
 as it will just be running on its own, however to ensure we share as much code
 as possible between the two implementations, we will start a background thread
@@ -106,7 +110,8 @@ issues that can pop up related to memory management and concurrency that will be
 explained later in the document. The solution suggested attempts to avoid concurrency
 issues by having threads communicate with each other over a socket and minimizes the
 amount of thought you will need to put into memory management by having each thread
-only access K objects that it creates.
+only access K objects that it creates. These issues will be covered in more detail in
+the Implementation section of the document.
 
 \section{Feed API}
 
@@ -114,7 +119,8 @@ In order to build the feed handler, we will need an example feed to work with.
 We will build our own library that has a single function that allows us to
 subscribe to the contents of the feed. No login or instrument subscription
 logic will be included in the examples. The function that we use to listen for
-new trades and quotes is called ProcessFeed.
+new trades and quotes is called ProcessFeed. It takes a single argument which is
+a function to be called when new data is available.
 
 \begin{figure}
 \begin{lstlisting}[language=C]
@@ -129,8 +135,8 @@ void ProcessFeed(int (*) (const FeedData *));
 \end{figure}
 
 The function that is passed into ProcessFeed should expect to take a single parameter
-which is a pointer to a FeedData struct (which holds the trade/quote data) and return
-an integer which indicates if the feed should continue sending data.
+which is a pointer to a \textit{FeedData} struct (which holds the trade/quote data)
+and return an integer which indicates if the feed should continue sending data.
 
 The FeedData data structure is a tagged union. A member called \textbf{type} should
 be checked before accessing the rest of the structure, otherwise you could be reading
@@ -185,8 +191,8 @@ typedef struct _FeedData {
 \caption{The FeedData structure that is populated by the fake feed}
 \end{figure}
 
-The ProcessFeed function expects a constant \verb|FF_CONTINUE_FEED| to be returned if the feed should continue to process messages,
-and \verb|FF_HALT_FEED| to be returned if not. These constants are defined in the \verb|fakefeed.h| header file.
+The ProcessFeed function expects a constant \verb|FF_CONTINUE_FEED| to be returned if the feed should continue to process messages, and \verb|FF_HALT_FEED| to be returned if not. These constants are defined
+in the \verb|fakefeed.h| header file.
 
 \begin{figure}
 \begin{lstlisting}[language=C]
@@ -208,7 +214,6 @@ int ExtractData(const FeedData *data)
 	}
 	return FF_CONTINUE_FEED;
 }
-
 \end{lstlisting}
 \caption{Example of processing messages from a feed in the callback}
 \end{figure}
