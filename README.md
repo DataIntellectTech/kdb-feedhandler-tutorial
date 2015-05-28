@@ -2,8 +2,7 @@
 
 This project demonstrates how to build a feedhandler that interfaces with kdb+.
 
-The PDF documentation for this resource can be found [here][gitpdfdoc] and also on the [AquaQ Analytics][aquaqresources]
-website.
+Additional PDF documentation on the C API can be found [here][gitpdfdoc] 
 
 Installation & Setup
 --------------------
