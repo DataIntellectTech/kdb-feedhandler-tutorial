@@ -17,7 +17,7 @@ files within the `build` directory.
 mkdir build; cd build; cmake ..
 ```
 
-### <img src="docs/icons/linux.png" height="16px"> Building on Linux
+### <img src="icons/linux.png" height="16px"> Building on Linux
 
 On Linux, you just need to run make install to complete the build process
 and find the binary output in the `../bin` directory.
@@ -26,7 +26,7 @@ and find the binary output in the `../bin` directory.
 make install && cd ../bin
 ```
 
-### <img src="docs/icons/windows.png" height="16px"> Building on Windows
+### <img src="icons/windows.png" height="16px"> Building on Windows
 
 On Windows platforms you will need to have the msbuild.exe available on your path. CMake creates
 two Visual Studio projects that need to be built. The `INSTALL` project will not modify any of the
