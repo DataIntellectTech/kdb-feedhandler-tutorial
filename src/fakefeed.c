@@ -1,8 +1,14 @@
+#ifdef __cplusplus
+extern "C"{
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
 #include "fakefeed.h"
+#ifdef __cplusplus
+}
+#endif
 
 #define arraylen(x) (sizeof(x)/sizeof(*(x)))
 #define itemfrom(x) x[rand()%arraylen(x)]

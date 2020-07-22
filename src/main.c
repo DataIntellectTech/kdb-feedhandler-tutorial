@@ -11,13 +11,14 @@
 //
 // AquaQ Analytics
 // kdb+ consultancy, training and support
-
+#ifdef __cplusplus
+extern "C"{
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
-
 // We define two custom thread and socket types (thread_t and socket_t based on the operating
 // system that we are based on). 
 #ifdef WIN32
@@ -25,20 +26,20 @@
     #include <windows.h>
     #include <process.h>
 
-    #define thread_t HANDLE;
-    #define socket_t SOCKET;
+    #define thread_t HANDLE
+    #define socket_t SOCKET
 #else
     #include <pthread.h>
     #include <unistd.h>
 
-    #define thread_t pthread_t; 
-    #define socket_t int;
+    #define thread_t pthread_t
+    #define socket_t int
 #endif
-
 #define KXVER 3
 #include "k.h"
 #include "socketpair.h"
 #include "fakefeed.h"
+
 
 thread_t thread;
 socket_t sockets[2];
@@ -233,3 +234,6 @@ K halt(K x)
 
     return (K) 0;
 }
+#ifdef __cplusplus
+}
+#endif
